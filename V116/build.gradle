@@ -1,0 +1,40 @@
+buildscript {
+    repositories {
+        maven { url = 'https://maven.minecraftforge.net/' }
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'net.minecraftforge.gradle:ForgeGradle:3.+'
+    }
+}
+repositories {
+    mavenCentral()
+    maven { url 'https://hub.spigotmc.org/nexus/content/repositories/snapshots/' }
+}
+apply plugin: 'net.minecraftforge.gradle'
+apply plugin: 'eclipse'
+apply plugin: 'maven-publish'
+
+group = 'fi.fullidle.fidts.FiDTS'
+version = '1.0'
+
+minecraft {
+    mappings channel: 'official', version: '1.16.5'
+}
+
+dependencies {
+    compileOnly project(":Common")
+    compileOnly  'org.spigotmc:spigot-api:1.16.5-R0.1-SNAPSHOT'
+    compileOnly (fileTree("libs"))
+    minecraft 'net.minecraftforge:forge:1.16.5-36.2.39'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+processResources {
+    filesMatching('plugin.yml') {
+        expand project.properties
+    }
+}

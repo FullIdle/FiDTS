@@ -1,0 +1,9 @@
+name: ${rootProject.name}
+main: ${group}
+version: ${version}
+api-version: 1.16
+description: 屁用插件
+commands:
+  fidts:
+    description: main cmd
+    aliases: [dts]
