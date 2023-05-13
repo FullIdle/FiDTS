@@ -14,11 +14,10 @@ import com.pixelmonmod.pixelmon.api.storage.PCStorage;
 import com.pixelmonmod.pixelmon.api.storage.PlayerPartyStorage;
 import com.pixelmonmod.pixelmon.api.storage.StoragePosition;
 import com.pixelmonmod.pixelmon.api.storage.StorageProxy;
-import com.pixelmonmod.pixelmon.battles.api.rules.clauses.type.AbilityClause;
 import com.pixelmonmod.pixelmon.battles.attacks.Attack;
-import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.StringTextComponent;
-import net.minecraft.util.text.TextComponentUtils;
+import org.bukkit.Bukkit;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -32,11 +31,15 @@ import java.util.*;
 import static fi.fullidle.fidts.FiDTS.plugin;
 
 public class Commands implements CommandExecutor {
+    static String offlineUpDown;
+
     String[] help = new String[]{
             "help",
             "upload",
             "download",
-            "confirm"
+            "confirm",
+            "offlineupload",
+            "offlinedownload"
     };
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
@@ -57,91 +60,74 @@ public class Commands implements CommandExecutor {
                 return false;
             }
             if (args[0].equalsIgnoreCase("confirm")){
-                if (player == null) {sender.sendMessage("该指令只能有玩家执行");return false;}
+                if (player == null) {
+                    OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(offlineUpDown.replace("offlineupload ",""));
+                    String path = plugin.getConfig().getString("CustomPath").equalsIgnoreCase("default")?
+                            plugin.getDataFolder().getAbsolutePath()+File.separatorChar+"data"+File.separatorChar+offlinePlayer.getName()+".yml":
+                            new File(plugin.getConfig().getString("CustomPath")).getAbsolutePath()+File.separatorChar+offlinePlayer.getName()+".yml";
+                    File file = new File(path);
+                    FileUtil fileUtil = new FileUtil(file);
+                    PlayerPartyStorage pps = StorageProxy.getParty(offlinePlayer.getUniqueId());
+                    PCStorage pcs = StorageProxy.getPCForPlayer(offlinePlayer.getUniqueId());
+                    if (offlineUpDown.contains("offlineupload")){
+                        upload(sender,fileUtil,pps,pcs);
+                    }
+
+                    if (offlineUpDown.contains("offlinedownload")){
+                        download(sender,fileUtil,pps,pcs);
+                    }
+                    offlineUpDown = "";
+                    return false;
+                }
+                //玩家的
                 if (!(player.getMetadata(FiDTS.class.toString()).size() > 0)){
                     sender.sendMessage("没有需要确认的内容");
                     return false;
                 }
                 String com = player.getMetadata(FiDTS.class.toString()).get(0).asString();
-                File file = new File(plugin.getDataFolder().getAbsolutePath()+File.separatorChar+"data"+File.separatorChar+player.getName()+".yml");
+                String path = plugin.getConfig().getString("CustomPath").equalsIgnoreCase("default")?
+                        plugin.getDataFolder().getAbsolutePath()+File.separatorChar+"data"+File.separatorChar+player.getName()+".yml":
+                        new File(plugin.getConfig().getString("CustomPath")).getAbsolutePath()+File.separatorChar+player.getName()+".yml";
+                File file = new File(path);
                 FileUtil fileUtil = new FileUtil(file);
                 PlayerPartyStorage pps = StorageProxy.getParty(player.getUniqueId());
                 PCStorage pcs = StorageProxy.getPCForPlayer(player.getUniqueId());
                 if (com.equalsIgnoreCase("upload")) {
-                    sender.sendMessage("正在上传中...");
-                    fileUtil.createFile();
-                    FileConfiguration con = fileUtil.getConfiguration();
-                    List<String> bList = new ArrayList<>();
-                    List<String> pList = new ArrayList<>();
-                    List<String> itemList = new ArrayList<>();
-                    plugin.getServer().getScheduler().runTaskAsynchronously(plugin,()->{
-                        int slot = 0;
-                        for (Pokemon pokemon : pps.getAll()) {
-                            if (pokemon !=null){
-                                bList.add(serializationPokemon(pokemon));
-                                if (!pokemon.getHeldItem().toString().contains("air")){
-                                    itemList.add(pokemon.getHeldItem().toString());
-                                }
-                                slot++;
-                                player.sendTitle("","已上次:"+slot+"只");
-                            }
-                        }
-                        for (Pokemon pokemon : pcs.getAll()) {
-                            if (pokemon !=null){
-                                pList.add(serializationPokemon(pokemon));
-                                if (!pokemon.getHeldItem().toString().contains("air")){
-                                    itemList.add(pokemon.getHeldItem().toString());
-                                }
-                                slot++;
-                                player.sendTitle("","已上次:"+slot+"只");
-                            }
-                        }
-                        for (Pokemon pokemon : pps.getAll()) {
-                            if (pokemon!=null){
-                                pps.set(pokemon.getPosition(),null);
-                            }
-                        }
-                        for (Pokemon pokemon : pcs.getAll()) {
-                            if (pokemon!=null){
-                                pcs.set(pokemon.getPosition(),null);
-                            }
-                        }
-                        con.set("Backpack",bList);
-                        con.set("PC",pList);
-                        con.set("V1_12",itemList);
-                        fileUtil.save(con);
-                        sender.sendMessage("上传成功了");
-                    });
+                    upload(sender,fileUtil,pps,pcs);
                     player.removeMetadata(FiDTS.class.toString(),plugin);
                     return false;
                 }
                 if (com.equalsIgnoreCase("download")){
-                    if (fileUtil.getFile().exists()){
-                        sender.sendMessage("正在下载");
-                        FileConfiguration con = fileUtil.getConfiguration();
-                        List<String> bList = con.getStringList("Backpack");
-                        List<String> pList = con.getStringList("PC");
-                        plugin.getServer().getScheduler().runTaskAsynchronously(plugin,()->{
-                            int slot = 1;
-                            for (String s : bList) {
-                                deserializationPokemon(s,pps);
-                                player.sendTitle("","已添加:"+slot+"只");
-                                slot++;
-                            }
-                            for (String s : pList) {
-                                deserializationPokemon(s,pcs);
-                                player.sendTitle("","已添加:"+slot+"只");
-                                slot++;
-                            }
-                            sender.sendMessage("下载完成");
-                            file.delete();
-                        });
-                    }else{
-                        sender.sendMessage("你没有数据可以获取");
-                    }
+                    download(sender,fileUtil,pps,pcs);
                     player.removeMetadata(FiDTS.class.toString(),plugin);
                     return false;
                 }
+                return false;
+            }
+            if (args[0].equalsIgnoreCase("offlineupload")){
+                if (args.length >= 2){
+                    OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(args[1]);
+                    if (!offlinePlayer.hasPlayedBefore()) {
+                        sender.sendMessage("没有这个玩家");
+                        return false;
+                    }
+                    offlineUpDown = "offlineupload "+offlinePlayer.getName();
+                    return false;
+                }
+                sender.sendMessage("格式: /fidts offlineupload [player]");
+                return false;
+            }
+            if (args[0].equalsIgnoreCase("offlinedownload")){
+                if (args.length >= 2){
+                    OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(args[1]);
+                    if (!offlinePlayer.hasPlayedBefore()) {
+                        sender.sendMessage("没有这个玩家");
+                        return false;
+                    }
+                    offlineUpDown = "offlinedownload "+offlinePlayer.getName();
+                    return false;
+                }
+                sender.sendMessage("格式: /fidts offlinedownload [player]");
                 return false;
             }
             sendHelp(sender);
@@ -283,5 +269,98 @@ public class Commands implements CommandExecutor {
             pokemon.setForm(map.get("Form"));
         }
         return pokemon;
+    }
+
+    public void upload(CommandSender sender,FileUtil fileUtil,PlayerPartyStorage pps,PCStorage pcs){
+        sender.sendMessage("正在上传中...");
+        fileUtil.createFile();
+        FileConfiguration con = fileUtil.getConfiguration();
+        List<String> bList = new ArrayList<>();
+        List<String> pList = new ArrayList<>();
+        List<String> itemList = new ArrayList<>();
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin,()->{
+            int slot = 0;
+            for (Pokemon pokemon : pps.getAll()) {
+                if (pokemon !=null){
+                    bList.add(serializationPokemon(pokemon));
+                    if (!pokemon.getHeldItem().toString().contains("air")){
+                        itemList.add(pokemon.getHeldItem().toString());
+                    }
+                    slot++;
+                    if (sender instanceof Player){
+                        ((Player) sender).sendTitle("","已上次:"+slot+"只");
+                    }else{
+                        sender.sendMessage("已上次:"+slot+"只");
+                    }
+                }
+            }
+            for (Pokemon pokemon : pcs.getAll()) {
+                if (pokemon !=null){
+                    pList.add(serializationPokemon(pokemon));
+                    if (!pokemon.getHeldItem().toString().contains("air")){
+                        itemList.add(pokemon.getHeldItem().toString());
+                    }
+                    slot++;
+                    if (sender instanceof Player){
+                        ((Player) sender).sendTitle("","已上次:"+slot+"只");
+                    }else{
+                        sender.sendMessage("已上次:"+slot+"只");
+                    }
+                }
+            }
+            //删除所有精灵
+            if (plugin.getConfig().getBoolean("AutoDelete")) {
+                for (Pokemon pokemon : pps.getAll()) {
+                    if (pokemon!=null){
+                        pps.set(pokemon.getPosition(),null);
+                    }
+                }
+                for (Pokemon pokemon : pcs.getAll()) {
+                    if (pokemon!=null){
+                        pcs.set(pokemon.getPosition(),null);
+                    }
+                }
+            }
+
+            con.set("Backpack",bList);
+            con.set("PC",pList);
+            con.set("V1_12",itemList);
+            fileUtil.save(con);
+            sender.sendMessage("上传成功了");
+        });
+    }
+
+    public void download(CommandSender sender,FileUtil fileUtil,PlayerPartyStorage pps,PCStorage pcs){
+        if (fileUtil.getFile().exists()){
+            sender.sendMessage("正在下载");
+            FileConfiguration con = fileUtil.getConfiguration();
+            List<String> bList = con.getStringList("Backpack");
+            List<String> pList = con.getStringList("PC");
+            plugin.getServer().getScheduler().runTaskAsynchronously(plugin,()->{
+                int slot = 1;
+                for (String s : bList) {
+                    deserializationPokemon(s,pps);
+                    if (sender instanceof Player){
+                        ((Player) sender).sendTitle("","已上次:"+slot+"只");
+                    }else{
+                        sender.sendMessage("已上次:"+slot+"只");
+                    }
+                    slot++;
+                }
+                for (String s : pList) {
+                    deserializationPokemon(s,pcs);
+                    if (sender instanceof Player){
+                        ((Player) sender).sendTitle("","已上次:"+slot+"只");
+                    }else{
+                        sender.sendMessage("已上次:"+slot+"只");
+                    }
+                    slot++;
+                }
+                sender.sendMessage("下载完成");
+                fileUtil.getFile().delete();
+            });
+        }else{
+            sender.sendMessage("你没有数据可以获取");
+        }
     }
 }
